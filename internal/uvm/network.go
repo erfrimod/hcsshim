@@ -72,7 +72,26 @@ func (uvm *UtilityVM) removeNamespaceNICs(ns *namespaceInfo) error {
 }
 
 func (uvm *UtilityVM) addNIC(id guid.GUID, endpoint *hns.HNSEndpoint) error {
+
+	// First a pre-add. This is a guest-only request.
+	preAddRequest := hcsschema.ModifySettingRequest{
+		GuestRequest: guestrequest.GuestRequest{
+			ResourceType: guestrequest.ResourceTypeNetwork,
+			RequestType:  requesttype.Add,
+			Settings: guestrequest.NetworkModifyRequest{ // TODO Swagger Refresh. HCS.Schema.Requests.NetworkModifySettingRequest
+				AdapterInstanceId: id.String(),
+				RequestType:       requesttype.PreAdd,
+				Settings:          endpoint,
+			},
+		},
+	}
+	if err := uvm.Modify(&preAddRequest); err != nil {
+		return err
+	}
+
+	// Then the Add itself
 	request := hcsschema.ModifySettingRequest{
+		ResourcePath: path.Join("VirtualMachine/Devices/NetworkAdapters", id.String()),
 		ResourceType: resourcetype.Network,
 		RequestType:  requesttype.Add,
 		Settings: hcsschema.NetworkAdapter{
@@ -82,9 +101,11 @@ func (uvm *UtilityVM) addNIC(id guid.GUID, endpoint *hns.HNSEndpoint) error {
 		GuestRequest: guestrequest.GuestRequest{
 			ResourceType: guestrequest.ResourceTypeNetwork,
 			RequestType:  requesttype.Add,
-			Settings:     endpoint,
+			Settings: guestrequest.NetworkModifyRequest{ // TODO Swagger Refresh. HCS.Schema.Requests.NetworkModifySettingRequest
+				AdapterInstanceId: id.String(),
+				RequestType:       requesttype.Add,
+			},
 		},
-		ResourcePath: path.Join("VirtualMachine/Devices/NetworkAdapters", id.String()),
 	}
 	if err := uvm.Modify(&request); err != nil {
 		return err
@@ -94,13 +115,21 @@ func (uvm *UtilityVM) addNIC(id guid.GUID, endpoint *hns.HNSEndpoint) error {
 
 func (uvm *UtilityVM) removeNIC(id guid.GUID, endpoint *hns.HNSEndpoint) error {
 	request := hcsschema.ModifySettingRequest{
+		ResourcePath: path.Join("VirtualMachine/Devices/NetworkAdapters", id.String()),
 		ResourceType: resourcetype.Network,
 		RequestType:  requesttype.Remove,
 		Settings: hcsschema.NetworkAdapter{
 			EndpointId: endpoint.Id,
 			MacAddress: endpoint.MacAddress,
 		},
-		ResourcePath: path.Join("VirtualMachine/Devices/NetworkAdapters", id.String()),
+		GuestRequest: hcsschema.ModifySettingRequest{ // @beweedon Is this right? In podscenariotests.ps1...? Not NetworkModifyRequest?
+			ResourceType: resourcetype.Network, // guestrequest.ResourceTypeNetwork if NetworkModifyRequest
+			RequestType:  requesttype.Remove,
+			Settings: guestrequest.NetworkModifyRequest{ // TODO Swagger Refresh. HCS.Schema.Requests.NetworkModifySettingRequest
+				AdapterInstanceId: id.String(),
+				RequestType:       requesttype.Remove,
+			},
+		},
 	}
 	if err := uvm.Modify(&request); err != nil {
 		return err

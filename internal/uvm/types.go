@@ -25,6 +25,7 @@ type vsmbShare struct {
 	refCount     uint32
 	name         string
 	guestRequest interface{}
+	allowedFiles []string
 }
 
 // scsiInfo is an internal structure used for determining what is mapped to a utility VM.
@@ -83,9 +84,14 @@ type UtilityVM struct {
 	containerCounter uint64
 
 	// VSMB shares that are mapped into a Windows UVM. These are used for read-only
-	// layers and mapped directories
-	vsmbShares  map[string]*vsmbShare
-	vsmbCounter uint64 // Counter to generate a unique share name for each VSMB share.
+	// layers and mapped directories.
+	// We maintain two sets of maps, `vsmbDirShares` tracks shares that are
+	// unrestricted mappings of directories. `vsmbFileShares` tracks shares that
+	// are restricted to some subset of files in the directory. This is used as
+	// part of a temporary fix to allow WCOW single-file mapping to function.
+	vsmbDirShares  map[string]*vsmbShare
+	vsmbFileShares map[string]*vsmbShare
+	vsmbCounter    uint64 // Counter to generate a unique share name for each VSMB share.
 
 	// VPMEM devices that are mapped into a Linux UVM. These are used for read-only layers, or for
 	// booting from VHD.
@@ -112,6 +118,8 @@ type UtilityVM struct {
 	// Handle to the vmmem process associated with this UVM. Used to look up
 	// memory metrics for the UVM.
 	vmmemProcess windows.Handle
+	// Tracks the error returned when looking up the vmmem process.
+	vmmemErr error
 	// We only need to look up the vmmem process once, then we keep a handle
 	// open.
 	vmmemOnce sync.Once
